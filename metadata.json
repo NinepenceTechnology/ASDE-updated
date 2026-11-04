@@ -1,0 +1,10 @@
+{
+  "name": "Centro de formação Professional ASDE",
+  "description": "Sistema integrado de gestão acadêmica, administrativa e aplicativo de ensino da língua inglesa do Centro de formação Professional ASDE.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

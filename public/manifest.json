@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "Centro de Formação Profissional ASDE",
+  "short_name": "ASDE Inglês",
+  "description": "Sistema integrado de gestão acadêmica e aplicativo de ensino da língua inglesa do Centro de Formação Profissional ASDE.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#065f46",
+  "background_color": "#022c22",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/asde_logo.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/asde_logo.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}
