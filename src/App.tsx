@@ -54,6 +54,7 @@ import {
   Building2,
   Lock,
   Video,
+  Search,
 } from 'lucide-react';
 
 const AdminLayout: React.FC = () => {
@@ -242,7 +243,7 @@ const AdminLayout: React.FC = () => {
 };
 
 const StudentLayout: React.FC = () => {
-  const { studentTab, setStudentTab, mobilePreviewFrame, activeStudent } = useApp();
+  const { studentTab, setStudentTab, mobilePreviewFrame, activeStudent, openQuickSearch } = useApp();
   const [showSideCompetition, setShowSideCompetition] = useState<boolean>(true);
 
   const studentNav = [
@@ -278,8 +279,19 @@ const StudentLayout: React.FC = () => {
       {/* Student Profile Bar: Photo highlighted, level, trial vs unlimited, and photo edit */}
       <StudentProfileBar />
 
-      {/* Student App Navigation Bar with Green Theme */}
+      {/* Student App Navigation Bar with Green Theme & Quick Search AI */}
       <div className="bg-white rounded-2xl border border-emerald-200/80 shadow-xs p-1.5 flex items-center justify-between gap-1 overflow-x-auto">
+        {/* Dedicated Quick Search AI Button */}
+        <button
+          type="button"
+          onClick={() => openQuickSearch()}
+          className="flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap bg-gradient-to-r from-emerald-700 to-teal-800 text-white shadow-xs hover:from-emerald-600 hover:to-teal-700 shrink-0"
+          title="Buscar Dúvidas de Gramática e Dicionário com IA (Ctrl+K)"
+        >
+          <Search className="w-4 h-4 text-emerald-300" />
+          <span>Quick Search AI</span>
+        </button>
+
         {studentNav.map((tab) => {
           const Icon = tab.icon;
           const isActive = studentTab === tab.id;
@@ -362,6 +374,15 @@ const StudentLayout: React.FC = () => {
 
               {/* Quick Tab Selector for Mobile Frame */}
               <div className="flex gap-1 overflow-x-auto pb-1 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => openQuickSearch()}
+                  className="px-2.5 py-1.5 rounded-lg font-black shrink-0 flex items-center gap-1 cursor-pointer bg-gradient-to-r from-emerald-700 to-teal-800 text-white shadow-xs"
+                >
+                  <Search className="w-3 h-3 text-emerald-300" />
+                  <span>Busca IA</span>
+                </button>
+
                 {studentNav.map((tab) => {
                   const Icon = tab.icon;
                   const isActive = studentTab === tab.id;

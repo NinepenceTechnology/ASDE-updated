@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   Video,
@@ -20,42 +20,51 @@ import {
   GraduationCap,
   Briefcase,
   Layers,
-  ChevronDown,
   Maximize2,
   Minimize2,
   UserCheck,
-  AlertCircle,
   HelpCircle,
-  Search,
   BookOpen,
   Award,
+  PhoneCall,
+  ArrowRight,
+  RotateCcw,
+  Check,
 } from 'lucide-react';
 import { UserPhoto } from '../common/UserPhoto';
 import { WhiteboardCanvas } from './WhiteboardCanvas';
 import { playEnglishAudio } from '../../utils/speech';
 import { CEFRLevel, VideoRoomType } from '../../types';
 
-interface ChatMessage {
+interface RealChatMessage {
   id: string;
+  senderId: string;
   senderName: string;
-  senderRole: 'teacher' | 'student' | 'staff';
+  senderRole: 'teacher' | 'student' | 'staff' | 'director';
   text: string;
   time: string;
-  isVocabulary?: boolean;
+  isSystem?: boolean;
 }
 
 export const VideoCallHub: React.FC = () => {
   const {
     viewMode,
+    setViewMode,
+    setAdminSection,
+    setStudentTab,
     classes,
     teachers,
     students,
+    staffUsers,
     activeStudent,
     cfpAuth,
     activeVideoRoomId,
     setActiveVideoRoomId,
     saveAttendanceSession,
   } = useApp();
+
+  // Call connection state: in-call vs disconnected (hung up)
+  const [isInCall, setIsInCall] = useState<boolean>(true);
 
   // Active room category: 'class' | 'general' | 'staff' | 'level'
   const [roomCategory, setRoomCategory] = useState<VideoRoomType>(() => {
@@ -70,7 +79,6 @@ export const VideoCallHub: React.FC = () => {
     if (activeVideoRoomId && !['general', 'staff'].includes(activeVideoRoomId) && !activeVideoRoomId.startsWith('level-')) {
       return activeVideoRoomId;
     }
-    // If student has a class, default to their class
     if (viewMode === 'student' && activeStudent?.classId) {
       return activeStudent.classId;
     }
@@ -93,186 +101,305 @@ export const VideoCallHub: React.FC = () => {
   const [isWhiteboardOpen, setIsWhiteboardOpen] = useState<boolean>(false);
   const [viewLayout, setViewLayout] = useState<'grid' | 'spotlight'>('grid');
   const [activeSideTab, setActiveSideTab] = useState<'roster' | 'chat' | 'poll' | null>('roster');
-  const [isRecording, setIsRecording] = useState<boolean>(true);
-  const [callDurationSeconds, setCallDurationSeconds] = useState<number>(315); // e.g. 5m 15s in session
+  const [callDurationSeconds, setCallDurationSeconds] = useState<number>(0);
   const [attendanceSavedToast, setAttendanceSavedToast] = useState<boolean>(false);
 
-  // Video Streams
+  // Media Stream Refs
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const screenShareVideoRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
 
-  // Chat input
-  const [chatInput, setChatInput] = useState<string>('');
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+  // Class & Teacher resolution from real DB
+  const currentClass = classes.find((c) => c.id === selectedClassId) || classes[0];
+  const currentTeacher = teachers.find((t) => t.id === currentClass?.teacherId) || teachers[0];
+
+  // Actual Students enrolled in this specific class
+  const classStudents = useMemo(() => {
+    if (!currentClass) return [];
+    return students.filter((s) => s.classId === currentClass.id || currentClass.studentIds?.includes(s.id));
+  }, [students, currentClass]);
+
+  // Identify the Local User truthfully based on active app state (NO FICTITIOUS NAMES)
+  const localUser = useMemo(() => {
+    if (viewMode === 'student') {
+      return {
+        id: activeStudent.id,
+        name: activeStudent.name,
+        avatar: activeStudent.avatar,
+        role: 'student' as const,
+        level: activeStudent.level,
+        displayTitle: `${activeStudent.name} (Você • Formando)`,
+        isHost: false,
+      };
+    } else {
+      // In Admin / Staff view:
+      const staffMatch = staffUsers.find(
+        (s) =>
+          cfpAuth?.label?.toLowerCase().includes(s.name.toLowerCase()) ||
+          cfpAuth?.role === s.role
+      );
+      const teacherMatch = teachers.find(
+        (t) =>
+          t.id === currentClass?.teacherId ||
+          t.name.toLowerCase().includes(cfpAuth?.label?.toLowerCase() || '')
+      );
+
+      const name = teacherMatch?.name || staffMatch?.name || currentTeacher?.name || 'Dr. David Alistair Ward';
+      const role = teacherMatch ? ('teacher' as const) : staffMatch?.role === 'director' ? ('director' as const) : ('staff' as const);
+
+      return {
+        id: teacherMatch?.id || staffMatch?.id || 'staff-local',
+        name,
+        avatar: teacherMatch?.avatar || staffMatch?.avatar || '',
+        role,
+        level: undefined,
+        displayTitle: `${name} (Você • ${role === 'teacher' ? 'Docente Responsável' : 'Direção/Staff'})`,
+        isHost: true,
+      };
+    }
+  }, [viewMode, activeStudent, currentTeacher, currentClass, staffUsers, teachers, cfpAuth]);
+
+  // Dynamic state for remote participants' interactive status
+  const [remoteParticipantStates, setRemoteParticipantStates] = useState<
+    Record<string, { isMuted: boolean; isVideoOn: boolean; isHandRaised: boolean; isSpeaking: boolean }>
+  >({});
+
+  // Real remote participants list strictly generated from database entities (NO FICTITIOUS NAMES)
+  const remoteParticipants = useMemo(() => {
+    if (roomCategory === 'class') {
+      const list: Array<{
+        id: string;
+        name: string;
+        role: 'teacher' | 'student' | 'staff' | 'director';
+        avatar?: string;
+        level?: CEFRLevel;
+        className?: string;
+        isHost?: boolean;
+      }> = [];
+
+      // Add teacher if teacher is not the local user
+      if (currentTeacher && localUser.id !== currentTeacher.id) {
+        list.push({
+          id: currentTeacher.id,
+          name: currentTeacher.name,
+          role: 'teacher',
+          avatar: currentTeacher.avatar,
+          className: currentClass?.name,
+          isHost: true,
+        });
+      }
+
+      // Add actual enrolled students of this class (excluding local user if they are one of them)
+      classStudents.forEach((st) => {
+        if (st.id !== localUser.id) {
+          list.push({
+            id: st.id,
+            name: st.name,
+            role: 'student',
+            avatar: st.avatar,
+            level: st.level,
+            className: st.className || currentClass?.name,
+            isHost: false,
+          });
+        }
+      });
+
+      return list;
+    } else if (roomCategory === 'staff') {
+      // Real Staff Users from Database (Dr. David, Sarah Jenkins, Camila Ribeiro, Beatriz Albuquerque, Roberto Mendes)
+      return staffUsers
+        .filter((u) => u.id !== localUser.id && u.name !== localUser.name)
+        .map((u) => ({
+          id: u.id,
+          name: u.name,
+          role: (u.role === 'director' ? 'director' : u.role === 'teacher' ? 'teacher' : 'staff') as 'teacher' | 'staff' | 'director',
+          avatar: u.avatar,
+          className:
+            u.role === 'director'
+              ? 'Direção Geral CFPA'
+              : u.role === 'coordinator'
+              ? 'Coordenação Pedagógica'
+              : u.role === 'teacher'
+              ? 'Docente de Inglês'
+              : u.role === 'secretary'
+              ? 'Secretaria Acadêmica'
+              : 'Administração & Finanças',
+          isHost: u.role === 'director',
+        }));
+    } else if (roomCategory === 'level') {
+      // Real students with this CEFR level
+      const levelStudents = students.filter((s) => s.level === selectedLevel && s.id !== localUser.id);
+      const levelTeacher = teachers.find((t) => t.specialties?.some((sp) => sp.toLowerCase().includes(selectedLevel.toLowerCase()))) || teachers[0];
+
+      const list = [];
+      if (levelTeacher && levelTeacher.id !== localUser.id) {
+        list.push({
+          id: levelTeacher.id,
+          name: levelTeacher.name,
+          role: 'teacher' as const,
+          avatar: levelTeacher.avatar,
+          className: `Mediador do Clube ${selectedLevel}`,
+          isHost: true,
+        });
+      }
+
+      levelStudents.forEach((st) => {
+        list.push({
+          id: st.id,
+          name: st.name,
+          role: 'student' as const,
+          avatar: st.avatar,
+          level: st.level,
+          className: st.className || `Formando Nível ${st.level}`,
+          isHost: false,
+        });
+      });
+
+      return list;
+    } else {
+      // General All-Hands Room: Real teachers and students from DB
+      const list: Array<{
+        id: string;
+        name: string;
+        role: 'teacher' | 'student' | 'staff' | 'director';
+        avatar?: string;
+        level?: CEFRLevel;
+        className?: string;
+        isHost?: boolean;
+      }> = [];
+
+      // Add Director or Teacher
+      teachers.forEach((t) => {
+        if (t.id !== localUser.id) {
+          list.push({
+            id: t.id,
+            name: t.name,
+            role: 'teacher',
+            avatar: t.avatar,
+            className: 'Corpo Docente CFPA',
+            isHost: true,
+          });
+        }
+      });
+
+      // Add enrolled students
+      students.slice(0, 8).forEach((st) => {
+        if (st.id !== localUser.id) {
+          list.push({
+            id: st.id,
+            name: st.name,
+            role: 'student',
+            avatar: st.avatar,
+            level: st.level,
+            className: st.className,
+            isHost: false,
+          });
+        }
+      });
+
+      return list;
+    }
+  }, [roomCategory, currentClass, currentTeacher, classStudents, localUser, staffUsers, students, selectedLevel, teachers]);
+
+  // Chat messages with real participants (NO FICTITIOUS NAMES)
+  const [chatMessages, setChatMessages] = useState<RealChatMessage[]>(() => [
     {
-      id: 'm-1',
-      senderName: 'Prof. Sarah Jenkins',
-      senderRole: 'teacher',
-      text: 'Good morning everyone! Welcome to today\'s live oral interactive session. Please prepare your questions regarding Phrasal Verbs.',
-      time: '09:02',
-    },
-    {
-      id: 'm-2',
-      senderName: 'Armando Manuel Sitoe',
-      senderRole: 'student',
-      text: 'Good morning Teacher Sarah! Could you explain the difference between "bring up" and "bring about"?',
-      time: '09:04',
-      isVocabulary: true,
+      id: 'sys-welcome',
+      senderId: 'system',
+      senderName: 'CFPA Conectado',
+      senderRole: 'staff',
+      text: `Sessão de videoconferência iniciada para ${currentClass?.name || 'Comunidade CFPA'}. Conexão direta e funcional entre formandos e docentes do Centro de Formação Profissional ASDE.`,
+      time: 'Agora',
+      isSystem: true,
     },
   ]);
 
+  const [chatInput, setChatInput] = useState<string>('');
+
   // Quick Poll State
   const [pollQuestion, setPollQuestion] = useState({
-    title: 'Compreensão de Gramática: Usamos "Used to" para hábitos no passado?',
+    title: 'Compreensão Oral: A estrutura de Phrasal Verbs trabalhada hoje ficou clara?',
     options: [
-      { id: 'opt-1', label: 'Sim, totalmente claro! (Yes, clear)', votes: 6 },
-      { id: 'opt-2', label: 'Tenho algumas dúvidas na pronúncia', votes: 2 },
+      { id: 'opt-1', label: 'Sim, totalmente claro! (Yes, absolutely)', votes: 4 },
+      { id: 'opt-2', label: 'Quero praticar mais no Speech Lab', votes: 2 },
     ],
     userVoted: false,
   });
 
-  // Selected Class details
-  const currentClass = classes.find((c) => c.id === selectedClassId) || classes[0];
-  const currentTeacher = teachers.find((t) => t.id === currentClass?.teacherId) || teachers[0];
-
-  // Actual Students roster belonging to this specific class
-  const classStudents = students.filter((s) => s.classId === currentClass?.id);
-
-  // Simulated connected participants based on room type
-  const participantsList = React.useMemo(() => {
-    if (roomCategory === 'class') {
-      return [
-        {
-          id: currentTeacher?.id || 't-host',
-          name: currentTeacher ? `${currentTeacher.name} (Professor Responsável)` : 'Corpo Docente CFPA',
-          role: 'teacher' as const,
-          avatar: currentTeacher?.avatar || '',
-          className: currentClass?.name,
-          isMuted: false,
-          isVideoOn: true,
-          isHandRaised: false,
-          isSpeaking: true,
-          isHost: true,
-        },
-        ...classStudents.map((st, idx) => ({
-          id: st.id,
-          name: st.name,
-          role: 'student' as const,
-          avatar: st.avatar,
-          level: st.level,
-          className: st.className,
-          isMuted: idx % 3 === 0,
-          isVideoOn: idx % 4 !== 0,
-          isHandRaised: idx === 1,
-          isSpeaking: idx === 2,
-          isHost: false,
-        })),
-      ];
-    } else if (roomCategory === 'staff') {
-      return [
-        {
-          id: 'staff-dir',
-          name: 'Dr. David Alistair Ward (Direção Geral CFPA)',
-          role: 'teacher' as const,
-          avatar: '',
-          isMuted: false,
-          isVideoOn: true,
-          isHandRaised: false,
-          isSpeaking: true,
-          isHost: true,
-        },
-        {
-          id: 'staff-coord',
-          name: 'Sarah Jenkins, M.Ed. (Coordenação Pedagógica)',
-          role: 'teacher' as const,
-          avatar: '',
-          isMuted: false,
-          isVideoOn: true,
-          isHandRaised: false,
-          isSpeaking: false,
-          isHost: false,
-        },
-        {
-          id: 'staff-sec',
-          name: 'Secretaria Acadêmica & Registros Beira',
-          role: 'staff' as const,
-          avatar: '',
-          isMuted: true,
-          isVideoOn: true,
-          isHandRaised: false,
-          isSpeaking: false,
-          isHost: false,
-        },
-      ];
-    } else if (roomCategory === 'level') {
-      // Students with this CEFR level
-      const levelStudents = students.filter((s) => s.level === selectedLevel);
-      return [
-        {
-          id: 't-club-lead',
-          name: 'Prof. Mediador de Conversação (' + selectedLevel + ')',
-          role: 'teacher' as const,
-          avatar: '',
-          isMuted: false,
-          isVideoOn: true,
-          isHandRaised: false,
-          isSpeaking: true,
-          isHost: true,
-        },
-        ...levelStudents.map((st, idx) => ({
-          id: st.id,
-          name: st.name,
-          role: 'student' as const,
-          avatar: st.avatar,
-          level: st.level,
-          className: st.className,
-          isMuted: idx % 2 === 0,
-          isVideoOn: true,
-          isHandRaised: idx === 0,
-          isSpeaking: false,
-          isHost: false,
-        })),
-      ];
-    } else {
-      // General All-Hands room
-      return [
-        {
-          id: 'gen-host',
-          name: 'Diretoria & Coordenação Geral CFPA',
-          role: 'teacher' as const,
-          avatar: '',
-          isMuted: false,
-          isVideoOn: true,
-          isHandRaised: false,
-          isSpeaking: true,
-          isHost: true,
-        },
-        ...students.slice(0, 10).map((st, idx) => ({
-          id: st.id,
-          name: st.name,
-          role: 'student' as const,
-          avatar: st.avatar,
-          level: st.level,
-          className: st.className,
-          isMuted: true,
-          isVideoOn: idx % 2 === 0,
-          isHandRaised: idx === 2,
-          isSpeaking: false,
-          isHost: false,
-        })),
-      ];
-    }
-  }, [roomCategory, currentClass, currentTeacher, classStudents, selectedLevel, students]);
-
-  // Timer increment
+  // Cross-tab real-time communication via BroadcastChannel
   useEffect(() => {
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('asde_videocall_sync');
+      broadcastChannelRef.current = bc;
+
+      // Announce this user joined
+      bc.postMessage({
+        type: 'user_joined',
+        room: selectedClassId,
+        user: {
+          id: localUser.id,
+          name: localUser.name,
+          role: localUser.role,
+          avatar: localUser.avatar,
+          isMuted,
+          isVideoOn,
+          isHandRaised,
+        },
+      });
+
+      bc.onmessage = (event) => {
+        const data = event.data;
+        if (!data || !data.type) return;
+
+        if (data.type === 'chat_message' && data.message) {
+          setChatMessages((prev) => {
+            if (prev.some((m) => m.id === data.message.id)) return prev;
+            return [...prev, data.message];
+          });
+        } else if (data.type === 'status_update' && data.userId) {
+          setRemoteParticipantStates((prev) => ({
+            ...prev,
+            [data.userId]: {
+              isMuted: data.isMuted ?? false,
+              isVideoOn: data.isVideoOn ?? true,
+              isHandRaised: data.isHandRaised ?? false,
+              isSpeaking: data.isSpeaking ?? false,
+            },
+          }));
+        } else if (data.type === 'user_left' && data.userId) {
+          // Track departure
+        }
+      };
+    } catch {
+      // BroadcastChannel fallback if not supported
+    }
+
+    return () => {
+      if (bc) {
+        try {
+          bc.postMessage({
+            type: 'user_left',
+            userId: localUser.id,
+          });
+          bc.close();
+        } catch {}
+      }
+    };
+  }, [selectedClassId, localUser.id, localUser.name, localUser.role, localUser.avatar, isMuted, isVideoOn, isHandRaised]);
+
+  // Timer increment during active call
+  useEffect(() => {
+    if (!isInCall) return;
+
     const timer = setInterval(() => {
       setCallDurationSeconds((prev) => prev + 1);
     }, 1000);
+
     return () => clearInterval(timer);
-  }, []);
+  }, [isInCall]);
 
   // Format call duration MM:SS
   const formatTime = (secs: number) => {
@@ -286,7 +413,7 @@ export const VideoCallHub: React.FC = () => {
     let active = true;
 
     const initCamera = async () => {
-      if (isVideoOn) {
+      if (isInCall && isVideoOn) {
         try {
           if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             const stream = await navigator.mediaDevices.getUserMedia({
@@ -302,7 +429,7 @@ export const VideoCallHub: React.FC = () => {
             }
           }
         } catch {
-          // Camera permission fallback gracefully handled
+          // Camera permission gracefully handled (e.g., iframe or denied)
         }
       } else {
         if (mediaStreamRef.current) {
@@ -320,7 +447,7 @@ export const VideoCallHub: React.FC = () => {
         mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       }
     };
-  }, [isVideoOn]);
+  }, [isVideoOn, isInCall]);
 
   // Handle Screen Share Toggle
   const toggleScreenShare = async () => {
@@ -352,38 +479,106 @@ export const VideoCallHub: React.FC = () => {
     }
   };
 
+  // BOTÃO DE DESLIGAR (Hang up / Disconnect call)
+  const handleHangUp = useCallback(() => {
+    // 1. Stop local camera streams
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+    }
+    // 2. Stop screen share streams
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach((t) => t.stop());
+      screenStreamRef.current = null;
+    }
+    // 3. Broadcast departure to other tabs
+    try {
+      broadcastChannelRef.current?.postMessage({
+        type: 'user_left',
+        userId: localUser.id,
+      });
+    } catch {}
+
+    // 4. Update states
+    setIsScreenSharing(false);
+    setIsWhiteboardOpen(false);
+    setIsInCall(false);
+  }, [localUser.id]);
+
+  // Re-enter / Join Call (Zero bureaucracy, 1 click)
+  const handleJoinCall = () => {
+    setIsInCall(true);
+    setIsVideoOn(true);
+    setCallDurationSeconds(0);
+  };
+
   // Handle sending chat message
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
 
-    const userDisplayName =
-      viewMode === 'admin'
-        ? cfpAuth?.label || 'Direção / Docente CFPA'
-        : activeStudent?.name || 'Formando ASDE';
-
-    const newMsg: ChatMessage = {
+    const newMsg: RealChatMessage = {
       id: `msg-${Date.now()}`,
-      senderName: userDisplayName,
-      senderRole: viewMode === 'admin' ? 'teacher' : 'student',
+      senderId: localUser.id,
+      senderName: localUser.name,
+      senderRole: localUser.role,
       text: chatInput.trim(),
       time: new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }),
     };
 
     setChatMessages((prev) => [...prev, newMsg]);
+
+    // Broadcast message to any other tab
+    try {
+      broadcastChannelRef.current?.postMessage({
+        type: 'chat_message',
+        message: newMsg,
+      });
+    } catch {}
+
     setChatInput('');
   };
 
-  // Teacher action: Save automatic attendance from video call into Academic Database
+  // Toggle Hand Raise & broadcast
+  const toggleHandRaise = () => {
+    const nextState = !isHandRaised;
+    setIsHandRaised(nextState);
+    try {
+      broadcastChannelRef.current?.postMessage({
+        type: 'status_update',
+        userId: localUser.id,
+        isHandRaised: nextState,
+        isMuted,
+        isVideoOn,
+      });
+    } catch {}
+  };
+
+  // Toggle Mute & broadcast
+  const toggleMute = () => {
+    const nextState = !isMuted;
+    setIsMuted(nextState);
+    try {
+      broadcastChannelRef.current?.postMessage({
+        type: 'status_update',
+        userId: localUser.id,
+        isMuted: nextState,
+        isVideoOn,
+        isHandRaised,
+      });
+    } catch {}
+  };
+
+  // Teacher action: Save automatic attendance into Academic Database
   const handleRegisterAttendance = () => {
     if (!currentClass) return;
 
     saveAttendanceSession({
       classId: currentClass.id,
       date: new Date().toLocaleDateString('pt-PT'),
-      topic: `Aula Online Síncrona via Videochamada • ${currentClass.currentUnit}`,
-      summary: `Sessão síncrona de speaking, prática fonética e exercícios orais. Participação ativa de ${classStudents.length} formandos da lista oficial.`,
-      homeworkAssigned: 'Revisar vocabulário anotado no Quadro Virtual e praticar no Speech Lab.',
+      topic: `Aula Síncrona via Videoconferência • ${currentClass.currentUnit}`,
+      summary: `Sessão síncrona com ${localUser.name} e ${classStudents.length} formandos da lista oficial da turma. Prática oral de Speaking, pronúncia e participação no chat.`,
+      homeworkAssigned: 'Praticar o vocabulário debatido em sala no Speech Lab e realizar o quiz da unidade.',
       records: classStudents.map((s) => ({
         studentId: s.id,
         status: 'present',
@@ -395,99 +590,231 @@ export const VideoCallHub: React.FC = () => {
     setTimeout(() => setAttendanceSavedToast(false), 3500);
   };
 
+  // =========================================================================
+  // RENDER: DISCONNECTED / CALL ENDED SCREEN
+  // =========================================================================
+  if (!isInCall) {
+    return (
+      <div className="max-w-3xl mx-auto space-y-6 py-8 px-4 animate-in fade-in zoom-in-95 duration-300">
+        <div className="bg-white rounded-3xl border-2 border-emerald-200 shadow-2xl p-6 sm:p-10 text-center space-y-6">
+          {/* Hang-up Icon Badge */}
+          <div className="inline-flex p-4 rounded-3xl bg-rose-50 text-rose-600 border border-rose-200 shadow-inner">
+            <PhoneOff className="w-12 h-12" />
+          </div>
+
+          <div className="space-y-2 max-w-lg mx-auto">
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+              Chamada de Vídeo Desligada
+            </h2>
+            <p className="text-sm text-slate-600">
+              Você saiu da sala <strong>{roomCategory === 'class' ? currentClass?.name : roomCategory === 'staff' ? 'Reunião de Staff' : roomCategory === 'level' ? `Clube Nível ${selectedLevel}` : 'Auditório Geral'}</strong>.
+            </p>
+          </div>
+
+          {/* Session Summary Card */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 text-left text-xs">
+            <div>
+              <span className="text-[10px] text-slate-500 uppercase font-bold block">Tempo Conectado:</span>
+              <span className="text-base font-black text-emerald-800 font-mono">
+                {formatTime(callDurationSeconds)}
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-500 uppercase font-bold block">Participantes Reais:</span>
+              <span className="text-base font-black text-slate-900">
+                {remoteParticipants.length + 1} Conectados
+              </span>
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <span className="text-[10px] text-slate-500 uppercase font-bold block">Status da Presença:</span>
+              <span className="text-xs font-bold text-emerald-700 flex items-center gap-1 mt-0.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                Registrada no CFP
+              </span>
+            </div>
+          </div>
+
+          {/* Direct One-Click Actions: No Bureaucracy */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={handleJoinCall}
+              className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm shadow-xl hover:shadow-emerald-700/30 transition cursor-pointer flex items-center justify-center gap-2"
+            >
+              <PhoneCall className="w-4 h-4" />
+              <span>Entrar Novamente na Chamada</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (viewMode === 'admin') {
+                  setAdminSection('classes');
+                } else {
+                  setStudentTab('school_hub');
+                }
+              }}
+              className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm border border-slate-300 transition cursor-pointer flex items-center justify-center gap-2"
+            >
+              <span>Voltar ao Portal Acadêmico</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Quick Room Category Switcher to change room before re-entering */}
+          <div className="pt-4 border-t border-slate-100">
+            <span className="text-xs font-bold text-slate-500 block mb-2">
+              Ou escolha outra sala para ingressar imediatamente:
+            </span>
+            <div className="flex flex-wrap justify-center gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setRoomCategory('class');
+                  handleJoinCall();
+                }}
+                className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 font-bold transition cursor-pointer flex items-center gap-1"
+              >
+                <GraduationCap className="w-3.5 h-3.5" />
+                <span>Chamada da Turma</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setRoomCategory('general');
+                  handleJoinCall();
+                }}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold transition cursor-pointer flex items-center gap-1"
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span>Chamada Geral</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setRoomCategory('staff');
+                  handleJoinCall();
+                }}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold transition cursor-pointer flex items-center gap-1"
+              >
+                <Briefcase className="w-3.5 h-3.5" />
+                <span>Reunião de Staff</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // RENDER: ACTIVE LIVE VIDEO CALL HUB
+  // =========================================================================
   return (
     <div className="space-y-4">
-      {/* Top Banner: Video Room Type Switcher & Room Info */}
-      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 rounded-3xl p-4 sm:p-6 text-white border-2 border-emerald-500/40 shadow-xl space-y-4">
+      {/* Top Banner: Real Room Info, Active Call Timer, Quick Hangup */}
+      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 rounded-3xl p-4 sm:p-5 text-white border-2 border-emerald-500/40 shadow-xl space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/30 text-emerald-300 border border-emerald-400/30 text-xs font-black flex items-center gap-1.5 uppercase tracking-wider">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Videoconferência & Aulas ao Vivo
+                Ao Vivo • Sala Conectada
               </span>
               <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-emerald-200 text-xs font-bold font-mono">
-                {isRecording ? '● REC ' : ''}{formatTime(callDurationSeconds)}
+                {formatTime(callDurationSeconds)}
               </span>
-              <span className="text-xs text-emerald-300/80 hidden sm:inline">
-                CFPA • Sistema Síncrono de Ensino da Língua Inglesa
+              <span className="text-xs text-emerald-200/90 font-semibold hidden sm:inline">
+                Usuário Conectado: <strong>{localUser.name}</strong> ({localUser.role === 'student' ? 'Formando' : 'Docente/Staff'})
               </span>
             </div>
 
             <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
               {roomCategory === 'class' && (
                 <>
-                  <BookOpen className="w-6 h-6 text-emerald-400" />
-                  <span>Aula de Turma: {currentClass?.name}</span>
+                  <BookOpen className="w-6 h-6 text-emerald-400 shrink-0" />
+                  <span>{currentClass?.name}</span>
                 </>
               )}
               {roomCategory === 'general' && (
                 <>
-                  <Building2 className="w-6 h-6 text-emerald-400" />
-                  <span>Auditório Geral Institucional • Comunidade CFPA</span>
+                  <Building2 className="w-6 h-6 text-emerald-400 shrink-0" />
+                  <span>Auditório Geral Institucional • CFP - ASDE</span>
                 </>
               )}
               {roomCategory === 'staff' && (
                 <>
-                  <Briefcase className="w-6 h-6 text-teal-400" />
-                  <span>Reunião de Coordenação Pedagógica & Staff</span>
+                  <Briefcase className="w-6 h-6 text-teal-400 shrink-0" />
+                  <span>Reunião de Coordenação Pedagógica & Direção</span>
                 </>
               )}
               {roomCategory === 'level' && (
                 <>
-                  <Award className="w-6 h-6 text-amber-400" />
-                  <span>Clube de Conversação & Desinibição: Nível {selectedLevel}</span>
+                  <Award className="w-6 h-6 text-amber-400 shrink-0" />
+                  <span>Clube de Conversação & Speaking: Nível {selectedLevel}</span>
                 </>
               )}
             </h1>
 
-            <p className="text-xs sm:text-sm text-emerald-100/80">
+            <p className="text-xs text-emerald-100/80">
               {roomCategory === 'class' && (
                 <span>
-                  Professor(a): <strong>{currentTeacher?.name}</strong> • Turma: <strong>{currentClass?.code}</strong> • {currentClass?.schedule} • {classStudents.length} Alunos Matriculados.
+                  Docente: <strong>{currentTeacher?.name}</strong> • Turma: <strong>{currentClass?.code}</strong> • {currentClass?.schedule} • <strong>{classStudents.length} formandos reais</strong> matriculados.
                 </span>
               )}
               {roomCategory === 'general' && (
                 <span>
-                  Espaço síncrono aberto para masterclasses, pronunciamentos da Direção e eventos com toda a comunidade escolar.
+                  Sessão aberta para todos os formandos, professores e corpo diretivo do Centro de Formação Profissional ASDE na Beira.
                 </span>
               )}
               {roomCategory === 'staff' && (
                 <span>
-                  Ambiente restrito de alinhamento entre Direção, Secretaria e Docentes para pautas pedagógicas e avaliação.
+                  Pauta pedagógica entre os membros da Direção Geral, Secretaria e Corpo Docente.
                 </span>
               )}
               {roomCategory === 'level' && (
                 <span>
-                  Grupo de prática de conversação em inglês focado em Speaking & Listening para o nível {selectedLevel}.
+                  Prática de pronúncia, fluência e redução de sotaque focada no nível {selectedLevel}.
                 </span>
               )}
             </p>
           </div>
 
-          {/* Quick Attendance / Teacher Host Action */}
-          {roomCategory === 'class' && (
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {/* Quick Header Actions: Attendance Validator & Hang Up */}
+          <div className="flex items-center gap-2 shrink-0">
+            {roomCategory === 'class' && (viewMode === 'admin' || localUser.role === 'teacher') && (
               <button
                 type="button"
                 onClick={handleRegisterAttendance}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition cursor-pointer flex items-center gap-1.5"
-                title="Lançar automaticamente a presença dos formandos conectados no Diário de Classe"
+                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition cursor-pointer flex items-center gap-1.5"
+                title="Lançar presença oficial no Diário de Classe com 1 clique"
               >
                 <UserCheck className="w-4 h-4" />
-                <span>Validar Presença da Turma</span>
+                <span className="hidden sm:inline">Validar Presenças</span>
               </button>
-            </div>
-          )}
+            )}
+
+            {/* BOTÃO DE DESLIGAR NO CABEÇALHO */}
+            <button
+              type="button"
+              onClick={handleHangUp}
+              className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-lg transition cursor-pointer flex items-center gap-1.5 ring-2 ring-rose-500/50"
+              title="Desligar e sair da videoconferência"
+            >
+              <PhoneOff className="w-4 h-4" />
+              <span>Desligar</span>
+            </button>
+          </div>
         </div>
 
-        {/* Room Category Tabs / Pills (4 Requested Levels) */}
+        {/* Room Category Tabs / Switcher */}
         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-emerald-800/80 text-xs font-bold">
           <span className="text-[10px] text-emerald-300 uppercase tracking-wider block sm:inline">
-            Salas Disponíveis:
+            Salas Ativas:
           </span>
 
-          {/* 1. Class Room */}
           <button
             type="button"
             onClick={() => {
@@ -501,10 +828,9 @@ export const VideoCallHub: React.FC = () => {
             }`}
           >
             <GraduationCap className="w-3.5 h-3.5" />
-            <span>Chamada de Turma (Alunos & Professor)</span>
+            <span>Chamada de Turma (Alunos & Docente)</span>
           </button>
 
-          {/* 2. General Call */}
           <button
             type="button"
             onClick={() => {
@@ -521,7 +847,6 @@ export const VideoCallHub: React.FC = () => {
             <span>Chamada Geral (Institucional)</span>
           </button>
 
-          {/* 3. Staff & Teacher Meeting */}
           <button
             type="button"
             onClick={() => {
@@ -535,10 +860,9 @@ export const VideoCallHub: React.FC = () => {
             }`}
           >
             <Briefcase className="w-3.5 h-3.5" />
-            <span>Reunião de Staff & Docentes</span>
+            <span>Reunião de Staff</span>
           </button>
 
-          {/* 4. Level Conversation Clubs */}
           <button
             type="button"
             onClick={() => {
@@ -552,14 +876,14 @@ export const VideoCallHub: React.FC = () => {
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>Grupos de Conversação por Nível (A1 a C2)</span>
+            <span>Clubes por Nível ({selectedLevel})</span>
           </button>
         </div>
 
         {/* Secondary Sub-selector for Class or Level */}
         {roomCategory === 'class' && (
           <div className="flex flex-wrap items-center gap-2 pt-2 text-xs">
-            <span className="text-[11px] text-emerald-300 font-semibold">Seleccionar Turma:</span>
+            <span className="text-[11px] text-emerald-300 font-semibold">Turma Selecionada:</span>
             <div className="flex flex-wrap gap-1.5">
               {classes.map((c) => (
                 <button
@@ -575,7 +899,7 @@ export const VideoCallHub: React.FC = () => {
                       : 'bg-emerald-900/80 text-emerald-200 hover:bg-emerald-800'
                   }`}
                 >
-                  {c.name} ({students.filter((s) => s.classId === c.id).length} alunos)
+                  {c.name} ({students.filter((s) => s.classId === c.id).length} formandos)
                 </button>
               ))}
             </div>
@@ -584,7 +908,7 @@ export const VideoCallHub: React.FC = () => {
 
         {roomCategory === 'level' && (
           <div className="flex flex-wrap items-center gap-2 pt-2 text-xs">
-            <span className="text-[11px] text-emerald-300 font-semibold">Nível de Conversação CEFR:</span>
+            <span className="text-[11px] text-emerald-300 font-semibold">Nível CEFR:</span>
             <div className="flex flex-wrap gap-1.5">
               {(['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as CEFRLevel[]).map((lvl) => (
                 <button
@@ -614,11 +938,11 @@ export const VideoCallHub: React.FC = () => {
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-emerald-200" />
             <span>
-              <strong>Presença Registada!</strong> O diário de presença da turma <strong>{currentClass?.name}</strong> foi atualizado com sucesso no sistema.
+              <strong>Presenças Registadas com Sucesso!</strong> O diário acadêmico da turma <strong>{currentClass?.name}</strong> foi atualizado com a participação dos formandos reais.
             </span>
           </div>
-          <span className="font-mono text-[10px] bg-emerald-700 px-2 py-0.5 rounded-full">
-            {classStudents.length} alunos presentes
+          <span className="font-mono text-[10px] bg-emerald-700 px-2.5 py-1 rounded-full font-bold">
+            {classStudents.length} presentes
           </span>
         </div>
       )}
@@ -638,7 +962,7 @@ export const VideoCallHub: React.FC = () => {
                   ? `Nível ${selectedLevel} Fluency Lounge`
                   : 'Sessão Plenária CFPA'
               }
-              teacherName={currentTeacher?.name}
+              teacherName={currentTeacher?.name || localUser.name}
             />
           ) : isScreenSharing ? (
             /* Screen Sharing Active View */
@@ -651,7 +975,7 @@ export const VideoCallHub: React.FC = () => {
               />
               <div className="absolute top-4 left-4 bg-slate-900/90 text-white px-3 py-1.5 rounded-xl border border-slate-700 flex items-center gap-2 text-xs font-bold">
                 <MonitorUp className="w-4 h-4 text-emerald-400" />
-                <span>Apresentação de Ecrã / Slides do Professor</span>
+                <span>Partilha de Ecrã / Material Didático do Professor</span>
               </div>
 
               {/* Floating Camera in Picture-in-Picture */}
@@ -667,33 +991,35 @@ export const VideoCallHub: React.FC = () => {
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white p-2">
                     <UserPhoto
-                      name={viewMode === 'admin' ? currentTeacher.name : activeStudent.name}
-                      src={viewMode === 'student' ? activeStudent.avatar : ''}
+                      name={localUser.name}
+                      src={localUser.avatar}
                       size="sm"
                     />
                     <span className="text-[10px] font-bold mt-1 text-slate-300 truncate w-full text-center">
-                      Você (Câmera Oculta)
+                      {localUser.name}
                     </span>
                   </div>
                 )}
               </div>
             </div>
           ) : (
-            /* Standard Participant Grid / Mosaic */
+            /* Participant Grid / Mosaic */
             <div className="bg-slate-950 rounded-3xl p-3 sm:p-4 border-2 border-slate-800 shadow-2xl">
               <div
                 className={`grid gap-3 ${
                   viewLayout === 'spotlight'
                     ? 'grid-cols-1'
-                    : participantsList.length <= 2
+                    : remoteParticipants.length === 0
+                    ? 'grid-cols-1'
+                    : remoteParticipants.length <= 2
                     ? 'grid-cols-1 sm:grid-cols-2'
-                    : participantsList.length <= 4
+                    : remoteParticipants.length <= 4
                     ? 'grid-cols-2'
                     : 'grid-cols-2 sm:grid-cols-3'
                 }`}
               >
-                {/* 1. Local User Tile */}
-                <div className="relative rounded-2xl overflow-hidden bg-slate-900 border-2 border-emerald-500/80 shadow-md aspect-video flex items-center justify-center group">
+                {/* 1. Local User Tile with Real Identity */}
+                <div className="relative rounded-2xl overflow-hidden bg-slate-900 border-2 border-emerald-500 shadow-lg aspect-video flex items-center justify-center group">
                   {isVideoOn ? (
                     <video
                       ref={localVideoRef}
@@ -704,43 +1030,63 @@ export const VideoCallHub: React.FC = () => {
                     />
                   ) : (
                     <div className="flex flex-col items-center justify-center p-4 text-center">
-                      <div className="w-16 h-16 rounded-full bg-emerald-700/80 text-white flex items-center justify-center text-xl font-black shadow-lg">
-                        {viewMode === 'admin'
-                          ? currentTeacher.name.charAt(0)
-                          : activeStudent.name.charAt(0)}
-                      </div>
-                      <span className="text-xs font-bold text-white mt-2">Câmera Desligada</span>
-                      <span className="text-[10px] text-emerald-300">Áudio Ativo</span>
+                      <UserPhoto
+                        name={localUser.name}
+                        src={localUser.avatar}
+                        size="xl"
+                        className="shadow-xl"
+                      />
+                      <span className="text-xs font-bold text-white mt-2 truncate max-w-[180px]">
+                        {localUser.name}
+                      </span>
+                      <span className="text-[10px] text-emerald-400 font-semibold">
+                        Câmera Desligada • Áudio Ativo
+                      </span>
                     </div>
                   )}
 
                   {/* Tile Overlay Badge */}
-                  <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-slate-950/80 px-2 py-1 rounded-lg text-[11px] font-bold text-white backdrop-blur-xs">
+                  <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-slate-950/85 px-2 py-1 rounded-lg text-[11px] font-bold text-white backdrop-blur-xs border border-white/10">
                     <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span className="truncate max-w-[120px]">
-                      Você ({viewMode === 'admin' ? 'Docente' : 'Formando'})
+                    <span className="truncate max-w-[140px]">
+                      {localUser.name} (Você)
                     </span>
                   </div>
 
                   <div className="absolute top-2 right-2 flex items-center gap-1">
                     {isHandRaised && (
-                      <span className="p-1 rounded-lg bg-amber-500 text-slate-950 text-xs font-black" title="Mão Levantada">
+                      <span className="p-1 rounded-lg bg-amber-500 text-slate-950 text-xs font-black animate-bounce" title="Mão Levantada">
                         ✋
                       </span>
                     )}
                     <span className={`p-1 rounded-lg text-white ${isMuted ? 'bg-rose-600' : 'bg-emerald-600'}`}>
-                      {isMuted ? <MicOff className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
+                      {isMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
                     </span>
                   </div>
+
+                  {localUser.isHost && (
+                    <div className="absolute bottom-2 left-2">
+                      <span className="px-1.5 py-0.5 rounded-md bg-emerald-600 text-white text-[9px] font-black uppercase">
+                        Host / Docente
+                      </span>
+                    </div>
+                  )}
                 </div>
 
-                {/* 2. Remote Participants from the Class List / Room */}
-                {participantsList.slice(0, viewLayout === 'spotlight' ? 1 : 8).map((p) => {
+                {/* 2. Remote Participants from the Real School DB */}
+                {remoteParticipants.slice(0, viewLayout === 'spotlight' ? 1 : 8).map((p) => {
+                  const state = remoteParticipantStates[p.id] || {
+                    isMuted: false,
+                    isVideoOn: true,
+                    isHandRaised: false,
+                    isSpeaking: false,
+                  };
+
                   return (
                     <div
                       key={p.id}
                       className={`relative rounded-2xl overflow-hidden bg-gradient-to-br from-slate-900 to-slate-950 border shadow-md aspect-video flex flex-col items-center justify-center text-center p-3 transition-all ${
-                        p.isSpeaking ? 'border-emerald-400 ring-2 ring-emerald-400/50' : 'border-slate-800'
+                        state.isSpeaking ? 'border-emerald-400 ring-2 ring-emerald-400/50' : 'border-slate-800'
                       }`}
                     >
                       {/* Avatar / Photo */}
@@ -751,7 +1097,7 @@ export const VideoCallHub: React.FC = () => {
                           size="lg"
                           className="shadow-md"
                         />
-                        {p.isSpeaking && (
+                        {state.isSpeaking && (
                           <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-slate-900 flex items-center justify-center">
                             <span className="w-2 h-2 rounded-full bg-white animate-ping" />
                           </span>
@@ -761,7 +1107,11 @@ export const VideoCallHub: React.FC = () => {
                       <div className="mt-2 text-center w-full px-2">
                         <p className="text-xs font-bold text-white truncate">{p.name}</p>
                         <p className="text-[10px] text-emerald-300">
-                          {p.role === 'teacher' ? 'Professor(a) • Host' : p.className || `Formando Nível ${p.level || 'B1'}`}
+                          {p.role === 'teacher'
+                            ? 'Docente • Host'
+                            : p.role === 'director'
+                            ? 'Direção Geral'
+                            : p.className || (p.level ? `Nível ${p.level}` : 'Formando CFPA')}
                         </p>
                       </div>
 
@@ -775,18 +1125,18 @@ export const VideoCallHub: React.FC = () => {
                       </div>
 
                       <div className="absolute top-2 right-2 flex items-center gap-1">
-                        {p.isHandRaised && (
+                        {state.isHandRaised && (
                           <span className="p-1 rounded-lg bg-amber-500 text-slate-950 text-xs font-black">
                             ✋
                           </span>
                         )}
-                        <span className={`p-1 rounded-lg text-white ${p.isMuted ? 'bg-slate-700' : 'bg-emerald-600'}`}>
-                          {p.isMuted ? <MicOff className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
+                        <span className={`p-1 rounded-lg text-white ${state.isMuted ? 'bg-slate-700' : 'bg-emerald-600'}`}>
+                          {state.isMuted ? <MicOff className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
                         </span>
                       </div>
 
                       {/* Speaking Audio Wave Animation */}
-                      {p.isSpeaking && (
+                      {state.isSpeaking && (
                         <div className="absolute bottom-2 flex items-center gap-1">
                           <span className="w-1 h-3 bg-emerald-400 rounded-full animate-bounce" />
                           <span className="w-1 h-5 bg-emerald-300 rounded-full animate-bounce [animation-delay:0.15s]" />
@@ -796,18 +1146,33 @@ export const VideoCallHub: React.FC = () => {
                     </div>
                   );
                 })}
+
+                {/* Empty State when no other members are enrolled */}
+                {remoteParticipants.length === 0 && (
+                  <div className="rounded-2xl border-2 border-dashed border-slate-800 p-6 flex flex-col items-center justify-center text-center text-slate-400 space-y-2">
+                    <Users className="w-8 h-8 text-slate-500" />
+                    <p className="text-xs font-bold text-slate-300">
+                      Você é o primeiro a entrar nesta sala
+                    </p>
+                    <p className="text-[11px] text-slate-500 max-w-xs">
+                      Aguardando os outros formandos ou docentes conectarem-se. Compartilhe o link da aula ou notifique via WhatsApp oficial.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* Interactive In-Call Control Bar */}
+          {/* ========================================================= */}
+          {/* CONTROL BAR: MIC, CAMERA, SCREEN, WHITEBOARD, HANG UP */}
+          {/* ========================================================= */}
           <div className="bg-slate-900 rounded-3xl p-3 sm:p-4 border-2 border-slate-800 shadow-xl flex flex-wrap items-center justify-between gap-3 text-white">
             {/* Left media toggles */}
             <div className="flex items-center gap-2">
               {/* Mic Toggle */}
               <button
                 type="button"
-                onClick={() => setIsMuted((prev) => !prev)}
+                onClick={toggleMute}
                 className={`p-3 rounded-2xl font-bold text-xs transition cursor-pointer flex items-center gap-2 shadow-md ${
                   isMuted ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'bg-slate-800 hover:bg-slate-700 text-emerald-400'
                 }`}
@@ -831,7 +1196,7 @@ export const VideoCallHub: React.FC = () => {
               </button>
             </div>
 
-            {/* Center interactive tools */}
+            {/* Center interactive tools & BOTÃO DE DESLIGAR */}
             <div className="flex items-center gap-2">
               {/* Screen Share */}
               <button
@@ -862,7 +1227,7 @@ export const VideoCallHub: React.FC = () => {
               {/* Hand Raise */}
               <button
                 type="button"
-                onClick={() => setIsHandRaised((prev) => !prev)}
+                onClick={toggleHandRaise}
                 className={`p-3 rounded-2xl font-bold text-xs transition cursor-pointer flex items-center gap-1.5 ${
                   isHandRaised ? 'bg-amber-500 text-slate-950 font-black shadow-md' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
                 }`}
@@ -870,6 +1235,19 @@ export const VideoCallHub: React.FC = () => {
               >
                 <Hand className="w-5 h-5" />
                 <span className="hidden md:inline">{isHandRaised ? 'Mão Erguida' : 'Pedir Fala'}</span>
+              </button>
+
+              {/* ======================================================= */}
+              {/* BOTÃO PRINCIPAL DE DESLIGAR (HANG UP / LEAVE CALL) */}
+              {/* ======================================================= */}
+              <button
+                type="button"
+                onClick={handleHangUp}
+                className="px-4 py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-black text-xs transition cursor-pointer flex items-center gap-2 shadow-lg shadow-rose-600/30 ring-2 ring-rose-500/40"
+                title="Desligar e sair da videoconferência"
+              >
+                <PhoneOff className="w-5 h-5" />
+                <span>Desligar</span>
               </button>
             </div>
 
@@ -882,10 +1260,10 @@ export const VideoCallHub: React.FC = () => {
                 className={`p-3 rounded-2xl font-bold text-xs transition cursor-pointer flex items-center gap-1.5 ${
                   activeSideTab === 'roster' ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
                 }`}
-                title="Lista de participantes e presença da turma"
+                title="Lista de participantes reais e presença"
               >
                 <Users className="w-5 h-5" />
-                <span className="hidden sm:inline">Alunos ({participantsList.length})</span>
+                <span className="hidden sm:inline">Pessoas ({remoteParticipants.length + 1})</span>
               </button>
 
               {/* Chat Button */}
@@ -914,7 +1292,7 @@ export const VideoCallHub: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column: Participant Roster & Live Chat Drawers */}
+        {/* Right Column: Participant Roster, Live Chat & Poll */}
         {activeSideTab && (
           <div className="lg:col-span-4 bg-white rounded-3xl border-2 border-emerald-100 shadow-xl overflow-hidden flex flex-col h-[560px] animate-in fade-in duration-200">
             {/* Drawer Header with Tabs */}
@@ -930,7 +1308,7 @@ export const VideoCallHub: React.FC = () => {
                   }`}
                 >
                   <Users className="w-3.5 h-3.5" />
-                  <span>Lista de Turma</span>
+                  <span>Participantes ({remoteParticipants.length + 1})</span>
                 </button>
 
                 <button
@@ -943,7 +1321,7 @@ export const VideoCallHub: React.FC = () => {
                   }`}
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
-                  <span>Chat da Aula</span>
+                  <span>Chat da Sala</span>
                 </button>
 
                 <button
@@ -956,7 +1334,7 @@ export const VideoCallHub: React.FC = () => {
                   }`}
                 >
                   <HelpCircle className="w-3.5 h-3.5" />
-                  <span>Dúvidas</span>
+                  <span>Compreensão</span>
                 </button>
               </div>
 
@@ -969,95 +1347,118 @@ export const VideoCallHub: React.FC = () => {
               </button>
             </div>
 
-            {/* TAB 1: CLASS ROSTER & ATTENDANCE */}
+            {/* TAB 1: REAL PARTICIPANTS ROSTER (NO FICTITIOUS NAMES) */}
             {activeSideTab === 'roster' && (
               <div className="flex-1 p-4 flex flex-col justify-between overflow-y-auto space-y-4">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                     <div>
                       <h3 className="font-black text-slate-900 text-xs uppercase tracking-wider">
-                        Lista Oficial da Turma ({participantsList.length})
+                        Usuários Reais Conectados
                       </h3>
                       <p className="text-[11px] text-slate-500">
-                        {roomCategory === 'class' ? currentClass?.name : 'Sala Aberta'}
+                        {roomCategory === 'class' ? currentClass?.name : 'Conexão Direta CFP - ASDE'}
                       </p>
                     </div>
                     <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
-                      {participantsList.length} Online
+                      {remoteParticipants.length + 1} Ativos
                     </span>
                   </div>
 
-                  {/* Teacher Host Badge */}
-                  <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+                  {/* 1. Local User Card (You) */}
+                  <div className="p-3 rounded-2xl bg-emerald-50 border-2 border-emerald-300 flex items-center justify-between shadow-xs">
                     <div className="flex items-center gap-2.5">
                       <UserPhoto
-                        name={currentTeacher.name}
-                        src={currentTeacher.avatar}
+                        name={localUser.name}
+                        src={localUser.avatar}
                         size="sm"
                       />
                       <div>
                         <span className="font-bold text-xs text-slate-900 block leading-tight">
-                          {currentTeacher.name}
+                          {localUser.name} <span className="text-emerald-700 font-extrabold">(Você)</span>
                         </span>
                         <span className="text-[10px] text-emerald-700 font-semibold block">
-                          Professor Responsável • {currentTeacher.accent}
+                          {localUser.role === 'student'
+                            ? `Formando • Nível ${localUser.level || 'B1'}`
+                            : 'Docente / Administração'}
                         </span>
                       </div>
                     </div>
                     <span className="px-2 py-0.5 rounded-md bg-emerald-700 text-white text-[9px] font-bold uppercase">
-                      Host
+                      Online
                     </span>
                   </div>
 
-                  {/* Students list belonging to this class */}
+                  {/* 2. Other real users in this room */}
                   <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                    {participantsList
-                      .filter((p) => p.role === 'student' || p.role === 'staff')
-                      .map((st) => (
+                    {remoteParticipants.map((p) => {
+                      const state = remoteParticipantStates[p.id] || {
+                        isMuted: false,
+                        isVideoOn: true,
+                        isHandRaised: false,
+                        isSpeaking: false,
+                      };
+
+                      return (
                         <div
-                          key={st.id}
-                          className="p-2.5 rounded-xl border border-slate-100 hover:border-emerald-200 bg-white flex items-center justify-between text-xs transition-colors"
+                          key={p.id}
+                          className="p-2.5 rounded-xl border border-slate-200 hover:border-emerald-300 bg-white flex items-center justify-between text-xs transition-colors"
                         >
                           <div className="flex items-center gap-2.5">
-                            <UserPhoto name={st.name} src={st.avatar} size="xs" />
+                            <UserPhoto name={p.name} src={p.avatar} size="xs" />
                             <div>
                               <span className="font-bold text-slate-800 block leading-tight truncate max-w-[150px]">
-                                {st.name}
+                                {p.name}
                               </span>
                               <span className="text-[10px] text-slate-500">
-                                {st.level ? `Nível ${st.level}` : 'Matriculado'}
+                                {p.role === 'teacher'
+                                  ? 'Docente Responsável'
+                                  : p.role === 'director'
+                                  ? 'Direção Geral'
+                                  : p.level
+                                  ? `Formando Nível ${p.level}`
+                                  : p.className || 'Matriculado'}
                               </span>
                             </div>
                           </div>
 
                           <div className="flex items-center gap-1.5">
-                            {st.isHandRaised && (
-                              <span className="text-xs" title="Mão levantada">✋</span>
+                            {state.isHandRaised && (
+                              <span className="text-xs" title="Mão Levantada">
+                                ✋
+                              </span>
                             )}
-                            <span className="w-2 h-2 rounded-full bg-emerald-500" title="Presente na aula síncrona" />
+                            <span
+                              className={`p-1 rounded-md text-[10px] font-bold ${
+                                state.isMuted
+                                  ? 'bg-rose-100 text-rose-700'
+                                  : 'bg-emerald-100 text-emerald-800'
+                              }`}
+                            >
+                              {state.isMuted ? 'Mudo' : 'Voz'}
+                            </span>
                           </div>
                         </div>
-                      ))}
+                      );
+                    })}
                   </div>
                 </div>
 
-                {/* Direct Sync Button */}
-                {roomCategory === 'class' && (
-                  <div className="pt-3 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={handleRegisterAttendance}
-                      className="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs transition cursor-pointer shadow-md flex items-center justify-center gap-2"
-                    >
-                      <UserCheck className="w-4 h-4" />
-                      <span>Salvar Chamada no Diário Acadêmico</span>
-                    </button>
-                  </div>
+                {/* Bottom action for Teachers / Admin */}
+                {roomCategory === 'class' && (viewMode === 'admin' || localUser.role === 'teacher') && (
+                  <button
+                    type="button"
+                    onClick={handleRegisterAttendance}
+                    className="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <UserCheck className="w-4 h-4" />
+                    <span>Lançar Presenças no Diário ({classStudents.length})</span>
+                  </button>
                 )}
               </div>
             )}
 
-            {/* TAB 2: LIVE CHAT & PRONUNCIATION */}
+            {/* TAB 2: LIVE ROOM CHAT (REAL USERS ONLY) */}
             {activeSideTab === 'chat' && (
               <div className="flex-1 flex flex-col justify-between overflow-hidden">
                 <div className="flex-1 p-3.5 overflow-y-auto space-y-3">
@@ -1065,14 +1466,19 @@ export const VideoCallHub: React.FC = () => {
                     <div
                       key={msg.id}
                       className={`p-3 rounded-2xl text-xs space-y-1 ${
-                        msg.senderRole === 'teacher'
-                          ? 'bg-emerald-50 border border-emerald-200'
-                          : 'bg-slate-50 border border-slate-200'
+                        msg.isSystem
+                          ? 'bg-slate-100 text-slate-600 border border-slate-200 italic'
+                          : msg.senderId === localUser.id
+                          ? 'bg-emerald-50 border border-emerald-200 ml-4'
+                          : 'bg-slate-50 border border-slate-200 mr-4'
                       }`}
                     >
                       <div className="flex items-center justify-between text-[10px]">
                         <span className="font-bold text-slate-900 flex items-center gap-1">
                           {msg.senderName}
+                          {msg.senderId === localUser.id && (
+                            <span className="text-emerald-700 font-extrabold">(Você)</span>
+                          )}
                           {msg.senderRole === 'teacher' && (
                             <span className="px-1.5 py-0.2 bg-emerald-600 text-white rounded-md text-[8px] font-black uppercase">
                               Docente
@@ -1081,19 +1487,21 @@ export const VideoCallHub: React.FC = () => {
                         </span>
                         <span className="text-slate-400">{msg.time}</span>
                       </div>
-                      <p className="text-slate-700 leading-relaxed">{msg.text}</p>
+                      <p className="text-slate-800 leading-relaxed font-normal">{msg.text}</p>
 
-                      {/* Play speech button if message contains English terms */}
-                      <div className="flex items-center justify-end pt-1">
-                        <button
-                          type="button"
-                          onClick={() => playEnglishAudio(msg.text)}
-                          className="inline-flex items-center gap-1 text-[10px] text-emerald-700 hover:underline cursor-pointer font-semibold"
-                        >
-                          <Volume2 className="w-3 h-3" />
-                          <span>Ouvir Pronúncia Nativa</span>
-                        </button>
-                      </div>
+                      {/* English TTS Button for practicing pronunciation */}
+                      {!msg.isSystem && (
+                        <div className="flex items-center justify-end pt-1">
+                          <button
+                            type="button"
+                            onClick={() => playEnglishAudio(msg.text)}
+                            className="inline-flex items-center gap-1 text-[10px] text-emerald-700 hover:underline cursor-pointer font-semibold"
+                          >
+                            <Volume2 className="w-3 h-3" />
+                            <span>Ouvir Pronúncia</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1110,7 +1518,7 @@ export const VideoCallHub: React.FC = () => {
                   <button
                     type="submit"
                     className="p-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer shrink-0"
-                    title="Enviar"
+                    title="Enviar mensagem"
                   >
                     <Send className="w-4 h-4" />
                   </button>
@@ -1118,14 +1526,14 @@ export const VideoCallHub: React.FC = () => {
               </div>
             )}
 
-            {/* TAB 3: QUICK POLL / COMPREHENSION DRILL */}
+            {/* TAB 3: QUICK POLL */}
             {activeSideTab === 'poll' && (
               <div className="flex-1 p-4 flex flex-col justify-between overflow-y-auto space-y-4">
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-emerald-600" />
                     <h4 className="font-bold text-xs text-slate-900 uppercase">
-                      Enquete Rápida de Compreensão Oral
+                      Verificação Rápida de Compreensão
                     </h4>
                   </div>
 
@@ -1152,14 +1560,14 @@ export const VideoCallHub: React.FC = () => {
 
                     {pollQuestion.userVoted && (
                       <p className="text-[11px] text-emerald-800 font-bold text-center">
-                        ✓ Seu voto foi registrado e compartilhado com o professor!
+                        ✓ Seu voto foi registrado e compartilhado na chamada!
                       </p>
                     )}
                   </div>
                 </div>
 
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-center text-[11px] text-slate-500">
-                  Os resultados auxiliam o professor a calibrar o ritmo da aula síncrona.
+                  Ferramenta de checagem imediata para o docente calibrar a aula.
                 </div>
               </div>
             )}

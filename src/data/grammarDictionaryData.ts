@@ -1,0 +1,241 @@
+export interface QuickSearchItem {
+  id: string;
+  term: string;
+  keywords: string[];
+  category: 'grammar' | 'dictionary' | 'phrasal_verb' | 'idiom' | 'mozambique_pitfalls';
+  partOfSpeech?: string;
+  cefrLevel: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
+  ipa?: string;
+  definitionPt: string;
+  definitionEn: string;
+  grammarRule?: string;
+  formula?: string;
+  examples: Array<{ en: string; pt: string }>;
+  collocations?: string[];
+  commonMistakes?: string;
+  synonyms?: string[];
+  mozambiqueTip?: string;
+}
+
+export const BUILTIN_GRAMMAR_DICTIONARY: QuickSearchItem[] = [
+  {
+    id: 'present-perfect-vs-simple-past',
+    term: 'Present Perfect vs. Simple Past',
+    keywords: ['present perfect', 'simple past', 'passado', 'have seen', 'did', 'yesterday', 'already', 'yet'],
+    category: 'grammar',
+    cefrLevel: 'B1',
+    definitionPt: 'Distinção fundamental entre ação com tempo definido no passado (Simple Past) e ação com conexão com o presente ou tempo indefinido (Present Perfect).',
+    definitionEn: 'Simple Past refers to completed actions at a specific time in the past. Present Perfect connects past actions to the present moment without a specified finished time.',
+    grammarRule: 'Usa-se o Simple Past quando o tempo for específico (yesterday, in 2023, last week, 2 hours ago). Usa-se o Present Perfect (have/has + past participle) para experiências de vida (ever, never), ações recentes (just, already, yet) ou períodos não terminados (today, this week).',
+    formula: 'Simple Past: Sujeito + V2 (ed/irregular) | Present Perfect: Sujeito + have/has + Particípio Passado',
+    examples: [
+      { en: 'I lived in Beira in 2021.', pt: 'Eu morei na Beira em 2021. (Tempo fechado e concluído)' },
+      { en: 'I have lived in Beira for 3 years.', pt: 'Eu moro na Beira há 3 anos. (Começou no passado e continua até hoje)' },
+      { en: 'Did you finish your homework yesterday?', pt: 'Terminaste a tua tarefa ontem?' },
+      { en: 'Have you finished your homework yet?', pt: 'Já terminaste a tua tarefa?' },
+    ],
+    commonMistakes: 'Evite dizer "I have seen him yesterday". O correto com marcadores de tempo passado é "I saw him yesterday".',
+    mozambiqueTip: 'Em Moçambique, frequentemente traduz-se "vivo aqui há 3 anos" literalmente como "I live here since 3 years". O correto em inglês internacional é "I have lived here for 3 years".',
+    collocations: ['have already', 'have never', 'have just', 'last night', 'two days ago'],
+  },
+  {
+    id: 'carry-out',
+    term: 'Carry out',
+    keywords: ['carry out', 'executar', 'realizar', 'phrasal verb', 'conduct'],
+    category: 'phrasal_verb',
+    partOfSpeech: 'Phrasal Verb (Transitive, Separable)',
+    cefrLevel: 'B2',
+    ipa: '/ˈkæri aʊt/',
+    definitionPt: 'Executar, realizar ou conduzir uma tarefa, plano, pesquisa ou ordem.',
+    definitionEn: 'To perform or complete a job, activity, experiment, or order.',
+    examples: [
+      { en: 'The students will carry out an oral presentation tomorrow.', pt: 'Os formandos irão realizar uma apresentação oral amanhã.' },
+      { en: 'ASDE carries out regular proficiency evaluations.', pt: 'O CFPA realiza avaliações regulares de proficiência.' },
+    ],
+    synonyms: ['conduct', 'execute', 'implement', 'perform'],
+    collocations: ['carry out research', 'carry out an inspection', 'carry out a survey', 'carry out a plan'],
+    commonMistakes: 'Não confunda com "carry on" (que significa continuar / prosseguir).',
+  },
+  {
+    id: 'carry-on',
+    term: 'Carry on',
+    keywords: ['carry on', 'continuar', 'prosseguir', 'phrasal verb'],
+    category: 'phrasal_verb',
+    partOfSpeech: 'Phrasal Verb (Intransitive / Transitive)',
+    cefrLevel: 'B1',
+    ipa: '/ˈkæri ɒn/',
+    definitionPt: 'Continuar, prosseguir ou seguir em frente apesar das dificuldades.',
+    definitionEn: 'To continue doing something, or to continue doing what you were doing.',
+    examples: [
+      { en: 'Carry on with your speaking practice, you are doing great!', pt: 'Continue com a sua prática oral, está a ir muito bem!' },
+      { en: 'Even with the power outage, the teacher carried on the class.', pt: 'Mesmo com o corte de energia, o professor continuou a aula.' },
+    ],
+    synonyms: ['continue', 'keep on', 'proceed'],
+    collocations: ['carry on working', 'carry on talking', 'carry on regardless'],
+  },
+  {
+    id: 'breakthrough',
+    term: 'Breakthrough',
+    keywords: ['breakthrough', 'avanço', 'conquista', 'descoberta', 'progresso'],
+    category: 'dictionary',
+    partOfSpeech: 'Noun (Countable)',
+    cefrLevel: 'B2',
+    ipa: '/ˈbreɪkˌθruː/',
+    definitionPt: 'Avanço marcante, conquista decisiva ou superação de um obstáculo significativo.',
+    definitionEn: 'An important discovery or event that helps to improve a situation or provide an answer to a problem.',
+    examples: [
+      { en: 'Speaking English in public was a major breakthrough for Lucas.', pt: 'Falar inglês em público foi um grande avanço para o Lucas.' },
+      { en: 'Scientists made a breakthrough in renewable energy.', pt: 'Cientistas fizeram uma descoberta decisiva em energia renovável.' },
+    ],
+    synonyms: ['advancement', 'milestone', 'triumph', 'leap forward'],
+    collocations: ['major breakthrough', 'technological breakthrough', 'diplomatic breakthrough'],
+  },
+  {
+    id: 'conditional-type-2',
+    term: 'Second Conditional (Condicional Tipo 2)',
+    keywords: ['second conditional', 'if past would', 'se eu fosse', 'hipotético', 'unreal past'],
+    category: 'grammar',
+    cefrLevel: 'B1',
+    definitionPt: 'Expressa situações hipotéticas, imaginárias ou improváveis no presente ou no futuro.',
+    definitionEn: 'Used to talk about things that are unreal, hypothetical, or impossible in the present or the future.',
+    grammarRule: 'A oração com IF leva o verbo no Simple Past. A oração principal usa WOULD (ou COULD/MIGHT) + verbo no infinitivo sem "to". Para o verbo "to be", a norma culta prefere "WERE" para todas as pessoas (If I were you).',
+    formula: 'If + Sujeito + Simple Past, Sujeito + would/could + Verbo Base',
+    examples: [
+      { en: 'If I had more free time, I would study English every day.', pt: 'Se eu tivesse mais tempo livre, estudaria inglês todos os dias.' },
+      { en: 'If I were you, I would take the IELTS preparation course.', pt: 'Se eu fosse você, faria o curso preparatório de IELTS.' },
+    ],
+    commonMistakes: 'Evite usar "would" na oração do IF: incorreto "If I would have money"; correto: "If I had money, I would buy a car".',
+    mozambiqueTip: 'Lembre-se de usar "If I were" em situações formais corporativas em vez de "If I was", especialmente em entrevistas de emprego.',
+  },
+  {
+    id: 'in-on-at-time-place',
+    term: 'Preposições IN, ON, AT (Tempo & Lugar)',
+    keywords: ['in on at', 'prepositions', 'preposições', 'tempo', 'lugar', 'horas', 'dias', 'meses'],
+    category: 'grammar',
+    cefrLevel: 'A2',
+    definitionPt: 'Regras da pirâmide de especificidade para tempo e localização em inglês.',
+    definitionEn: 'General-to-specific pyramid rule for time and location prepositions in English.',
+    grammarRule: '• AT (Muito específico): Horários exatos (at 7:00), endereços com número (at 24 Julius Nyerere Ave), momentos específicos (at night, at the weekend).\n• ON (Médio): Dias da semana (on Monday), datas completas (on 25th of June), superfícies (on the table), ilhas e ruas sem número (on Samora Machel Ave).\n• IN (Amplo): Meses (in December), anos (in 2025), estações (in summer), cidades e países (in Beira, in Mozambique).',
+    formula: 'AT = Ponto exato / Hora | ON = Dia / Data / Superfície | IN = Espaço fechado / Período amplo',
+    examples: [
+      { en: 'The class starts at 18:30 on Tuesday.', pt: 'A aula começa às 18:30 na terça-feira.' },
+      { en: 'The ASDE headquarters is located in Beira.', pt: 'A sede da ASDE está localizada na Beira.' },
+      { en: 'I will see you at the airport on June 15th.', pt: 'Vejo-te no aeroporto no dia 15 de Junho.' },
+    ],
+    commonMistakes: 'Dizer "in Monday" é incorreto; dias da semana sempre levam "on". Dizer "at 2024" é incorreto; anos levam "in".',
+    mozambiqueTip: 'Para transporte: diz-se "on the bus / on the train / on a plane" (veículos onde se pode ficar em pé), mas "in a car / in a chapa" (veículos pequenos onde se entra sentado).',
+  },
+  {
+    id: 'used-to-vs-be-used-to',
+    term: 'Used to vs. Be used to vs. Get used to',
+    keywords: ['used to', 'be used to', 'get used to', 'costumava', 'acostumado'],
+    category: 'grammar',
+    cefrLevel: 'B2',
+    definitionPt: 'Diferenciação entre hábitos no passado (Used to), estar acostumado (Be used to) e o processo de acostumar-se (Get used to).',
+    definitionEn: 'Distinction between past discontinued habits, being accustomed to something, and becoming accustomed to something.',
+    grammarRule: '• Used to + Infinitivo: Hábito passado que não existe mais ("I used to live in Nampula").\n• Be used to + ING / Substantivo: Estar habituado ("I am used to waking up early").\n• Get used to + ING / Substantivo: Processo de adaptação ("You will get used to English accents").',
+    formula: 'Used to + V1 | Be used to + V-ing | Get used to + V-ing',
+    examples: [
+      { en: 'I used to struggle with English, but now I speak fluently.', pt: 'Eu costumava ter dificuldades com inglês, mas agora falo com fluência.' },
+      { en: 'She is used to British pronunciation because of Teacher David.', pt: 'Ela está acostumada com a pronúncia britânica por causa do Professor David.' },
+      { en: 'It took me a month to get used to the online classes.', pt: 'Levei um mês para me acostumar com as aulas online.' },
+    ],
+    commonMistakes: 'Não confunda: "I used to swim" (Eu nadava antigamente) com "I am used to swimming" (Estou acostumado a nadar hoje).',
+  },
+  {
+    id: 'although-despite-in-spite-of',
+    term: 'Although vs. Despite vs. In spite of',
+    keywords: ['although', 'despite', 'in spite of', 'embora', 'apesar de', 'concessão'],
+    category: 'grammar',
+    cefrLevel: 'B2',
+    definitionPt: 'Conectivos de contraste e concessão com estruturas sintáticas distintas.',
+    definitionEn: 'Contrast and concession linkers with differing grammatical clause patterns.',
+    grammarRule: '• Although / Even though / Though: Seguidos de uma ORAÇÃO COMPLETA (Sujeito + Verbo).\n• Despite / In spite of: Seguidos de SUBSTANTIVO ou VERBO NO GERÚNDIO (-ing). NUNCA use "of" depois de despite ("despite the rain", NÃO "despite of the rain").',
+    formula: 'Although + Sujeito + Verbo | Despite / In spite of + Substantivo ou Gerúndio (-ing)',
+    examples: [
+      { en: 'Although it rained heavily, all students attended the class.', pt: 'Embora tenha chovido forte, todos os alunos compareceram à aula.' },
+      { en: 'Despite the heavy rain, all students attended the class.', pt: 'Apesar da chuva forte, todos os alunos compareceram à aula.' },
+      { en: 'In spite of feeling tired, she practiced her vocabulary.', pt: 'Apesar de se sentir cansada, ela praticou o vocabulário.' },
+    ],
+    commonMistakes: 'O erro mais comum é dizer "despite of". Lembre-se: "In spite OF", mas "DESPITE" sem "of".',
+  },
+  {
+    id: 'assist-vs-attend',
+    term: 'Assist vs. Attend (Falso Cognato Clássico)',
+    keywords: ['assist', 'attend', 'assistir', 'participar', 'ajudar', 'falsos cognatos', 'falso amigo'],
+    category: 'mozambique_pitfalls',
+    cefrLevel: 'A2',
+    definitionPt: 'Em inglês, "assist" NÃO significa assistir a um evento ou aula; significa AJUDAR.',
+    definitionEn: 'In English, "attend" means to be present at an event/class, whereas "assist" means to help or give aid.',
+    examples: [
+      { en: 'I attend classes at CFPA every Monday.', pt: 'Eu assisto / frequento as aulas no CFPA todas as segundas-feiras.' },
+      { en: 'The teaching assistant assisted the students with their pronunciation.', pt: 'A monitora ajudou os formandos com a pronúncia.' },
+      { en: 'Did you watch the football match on TV?', pt: 'Assististe ao jogo de futebol na TV? (Para TV usa-se watch)' },
+    ],
+    mozambiqueTip: 'Em Moçambique, dizemos "fui assistir a aula". Em inglês profissional, NUNCA diga "I assisted the class"; diga SEMPRE "I attended the class". Para televisão, use "watch TV".',
+    commonMistakes: 'Usar "assist" no sentido de estar presente na sala.',
+  },
+  {
+    id: 'actual-vs-current',
+    term: 'Actual vs. Current (Atualmente vs Realmente)',
+    keywords: ['actual', 'current', 'atualmente', 'realmente', 'falsos amigos', 'falso cognato'],
+    category: 'mozambique_pitfalls',
+    cefrLevel: 'B1',
+    definitionPt: 'Em inglês, "actual" significa "real, de fato". Para dizer "atual / atualmente", usa-se "current / currently".',
+    definitionEn: '"Actual" means existing in fact or reality (not currently). To say "at present", use "current" or "currently".',
+    examples: [
+      { en: 'The actual cost was lower than the estimate.', pt: 'O custo real / de fato foi mais baixo do que a estimativa.' },
+      { en: 'My current English level is B1.', pt: 'O meu nível atual de inglês é B1.' },
+      { en: 'Currently, I am working in Beira port.', pt: 'Atualmente, estou a trabalhar no porto da Beira.' },
+    ],
+    mozambiqueTip: 'Não diga "My actual level" querendo dizer "meu nível atual". Diga "My current level". Use "actual" quando quiser dizer "verdadeiro / de fato".',
+  },
+  {
+    id: 'phrasal-verbs-with-get',
+    term: 'Top Phrasal Verbs with GET',
+    keywords: ['get', 'get along', 'get over', 'get by', 'get through', 'get in', 'phrasal verbs'],
+    category: 'phrasal_verb',
+    cefrLevel: 'B1',
+    definitionPt: 'O verbo GET combinado com partículas forma expressões essenciais para a fluência diária.',
+    definitionEn: 'Key combinations of the verb GET with prepositions for everyday fluency.',
+    examples: [
+      { en: 'Get along: Do you get along well with your classmates?', pt: 'Dar-se bem: Dá-se bem com os seus colegas de turma?' },
+      { en: 'Get over: It took him weeks to get over the flu.', pt: 'Superar: Levou semanas para ele se recuperar/superar a gripe.' },
+      { en: 'Get by: My English is good enough to get by in London.', pt: 'Virar-se / Sobreviver: Meu inglês é bom o suficiente para me virar em Londres.' },
+      { en: 'Get ahead: Learning English helps you get ahead in your career.', pt: 'Progredir / Ter sucesso: Aprender inglês ajuda-o a progredir na carreira.' },
+    ],
+    synonyms: ['advance', 'recover', 'manage', 'socialize'],
+  },
+  {
+    id: 'look-forward-to',
+    term: 'Look forward to',
+    keywords: ['look forward to', 'ansioso', 'aguardar com expectativa', 'e-mail corporativo'],
+    category: 'idiom',
+    cefrLevel: 'B1',
+    ipa: '/lʊk ˈfɔːwəd tuː/',
+    definitionPt: 'Aguardar algo com muita expectativa e alegria. Muito usado no encerramento de e-mails corporativos.',
+    definitionEn: 'To feel pleased and excited about something that is going to happen.',
+    grammarRule: 'Atenção: A preposição "to" aqui exige que o verbo seguinte fique no GERÚNDIO (-ing) ou seja um substantivo!',
+    formula: 'Look forward to + Verbo(-ing) ou Substantivo',
+    examples: [
+      { en: 'I look forward to hearing from you soon.', pt: 'Aguardo o seu retorno em breve. (Fórmula clássica de e-mail)' },
+      { en: 'We look forward to starting our next English module.', pt: 'Estamos ansiosos para iniciar o nosso próximo módulo de inglês.' },
+    ],
+    commonMistakes: 'Evite dizer "I look forward to hear". A regra exige "I look forward to hearing".',
+  },
+  {
+    id: 'make-vs-do',
+    term: 'Make vs. Do',
+    keywords: ['make', 'do', 'fazer', 'diferença', 'collocations'],
+    category: 'grammar',
+    cefrLevel: 'A2',
+    definitionPt: 'Diferença entre criar/construir algo novo (Make) e realizar tarefas/ações rotineiras (Do).',
+    definitionEn: 'Use DO for actions, obligations, and repetitive tasks. Use MAKE for creating, producing, or constructing something new.',
+    examples: [
+      { en: 'Do homework / Do business / Do an exercise / Do research.', pt: 'Fazer o dever de casa / Fazer negócios / Fazer um exercício / Fazer pesquisa.' },
+      { en: 'Make a mistake / Make a decision / Make money / Make friends.', pt: 'Cometer um erro / Tomar uma decisão / Ganhar dinheiro / Fazer amigos.' },
+    ],
+    commonMistakes: 'Dizer "make homework" é um erro clássico. O correto é sempre "DO homework". Dizer "do a mistake" é incorreto; diz-se "MAKE a mistake".',
+    mozambiqueTip: 'Em português usamos "fazer" para tudo (fazer a lição, fazer um erro, fazer um café). Em inglês, memorize as parcerias: DO com deveres/atividades e MAKE com decisões/criações.',
+  },
+];

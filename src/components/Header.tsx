@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { ASDELogo } from './ASDELogo';
 import { PWAInstallButton } from './common/PWAInstallButton';
 import { InstitutionalProfileModal } from './institutional/InstitutionalProfileModal';
+import { QuickSearchAIModal } from './common/QuickSearchAIModal';
 import {
   Smartphone,
   LayoutDashboard,
@@ -20,6 +21,7 @@ import {
   Info,
   Phone,
   MessageCircle,
+  Search,
 } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -38,9 +40,26 @@ export const Header: React.FC = () => {
     cfpAuth,
     studentAuth,
     logoutPortal,
+    isQuickSearchOpen,
+    setIsQuickSearchOpen,
+    quickSearchInitialQuery,
+    quickSearchInitialCategory,
+    openQuickSearch,
   } = useApp();
 
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  // Global Ctrl+K / Cmd+K keyboard shortcut to open Quick Search AI
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        openQuickSearch();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [openQuickSearch]);
 
   return (
     <>
@@ -94,6 +113,20 @@ export const Header: React.FC = () => {
                 <ASDELogo size="md" variant="full" />
               </button>
             </div>
+
+            {/* Quick Search AI Trigger Button */}
+            <button
+              onClick={() => openQuickSearch()}
+              className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-50/90 hover:bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-bold transition shadow-xs cursor-pointer group shrink-0"
+              title="Buscar Gramática e Dicionário com IA (Ctrl+K)"
+            >
+              <Search className="w-3.5 h-3.5 text-emerald-700 group-hover:scale-110 transition-transform" />
+              <span className="hidden lg:inline">Quick Search AI • Gramática & Dicionário</span>
+              <span className="hidden sm:inline lg:hidden">Quick Search AI</span>
+              <kbd className="hidden md:inline-block px-1.5 py-0.5 rounded text-[10px] font-mono bg-white text-emerald-800 border border-emerald-200 shadow-xs">
+                Ctrl+K
+              </kbd>
+            </button>
 
             {/* Central Two Portal Switcher */}
             <div className="flex items-center bg-slate-100/90 p-1 rounded-xl border border-slate-200 shadow-xs shrink-0">
@@ -230,6 +263,14 @@ export const Header: React.FC = () => {
       <InstitutionalProfileModal
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
+      />
+
+      {/* Quick Search AI Modal • Grammar & Dictionary */}
+      <QuickSearchAIModal
+        isOpen={isQuickSearchOpen}
+        onClose={() => setIsQuickSearchOpen(false)}
+        initialQuery={quickSearchInitialQuery}
+        initialCategory={quickSearchInitialCategory}
       />
     </>
   );

@@ -134,6 +134,13 @@ interface AppContextType {
   setActiveVideoRoomId: (roomId: string) => void;
   openVideoRoom: (roomId?: string, forceMode?: 'admin' | 'student') => void;
 
+  // Quick Search AI • Grammar & Dictionary
+  isQuickSearchOpen: boolean;
+  setIsQuickSearchOpen: (open: boolean) => void;
+  quickSearchInitialQuery: string;
+  quickSearchInitialCategory: 'all' | 'dictionary' | 'grammar' | 'phrasal_verb' | 'checker' | 'mozambique';
+  openQuickSearch: (query?: string, category?: 'all' | 'dictionary' | 'grammar' | 'phrasal_verb' | 'checker' | 'mozambique') => void;
+
   // Portal Gate & Local Authentication
   portalGateOpen: boolean;
   setPortalGateOpen: (open: boolean) => void;
@@ -162,6 +169,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeStudentId, setActiveStudentId] = useState<string>('stu-1');
   const [mobilePreviewFrame, setMobilePreviewFrame] = useState<boolean>(false);
   const [activeVideoRoomId, setActiveVideoRoomId] = useState<string>('cls-1');
+  const [isQuickSearchOpen, setIsQuickSearchOpen] = useState<boolean>(false);
+  const [quickSearchInitialQuery, setQuickSearchInitialQuery] = useState<string>('');
+  const [quickSearchInitialCategory, setQuickSearchInitialCategory] = useState<
+    'all' | 'dictionary' | 'grammar' | 'phrasal_verb' | 'checker' | 'mozambique'
+  >('all');
 
   // Portal Gate & Local Auth States
   const [portalGateOpen, setPortalGateOpen] = useState<boolean>(() => {
@@ -822,6 +834,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const openQuickSearch = (
+    query?: string,
+    category?: 'all' | 'dictionary' | 'grammar' | 'phrasal_verb' | 'checker' | 'mozambique'
+  ) => {
+    if (query !== undefined) setQuickSearchInitialQuery(query);
+    if (category) setQuickSearchInitialCategory(category);
+    setIsQuickSearchOpen(true);
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -872,6 +893,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeVideoRoomId,
         setActiveVideoRoomId,
         openVideoRoom,
+        isQuickSearchOpen,
+        setIsQuickSearchOpen,
+        quickSearchInitialQuery,
+        quickSearchInitialCategory,
+        openQuickSearch,
         portalGateOpen,
         setPortalGateOpen,
         cfpAuth,
