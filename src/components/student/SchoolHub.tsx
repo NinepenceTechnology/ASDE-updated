@@ -22,11 +22,12 @@ import {
   Target,
   Trophy,
   Building,
+  Video,
 } from 'lucide-react';
 import { BankingDetailsCard } from '../common/BankingDetailsCard';
 
 export const SchoolHub: React.FC = () => {
-  const { activeStudent, classes, teachers, sessions, invoices, markInvoicePaid } = useApp();
+  const { activeStudent, classes, teachers, sessions, invoices, markInvoicePaid, openVideoRoom } = useApp();
 
   const [certModalOpen, setCertModalOpen] = useState(false);
   const [certType, setCertType] = useState<'certificate' | 'declaration'>('certificate');
@@ -129,6 +130,15 @@ export const SchoolHub: React.FC = () => {
                 <span>Professor(a): <strong>{studentTeacher?.name || 'Teacher Sarah'}</strong></span>
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => openVideoRoom(studentClass?.id || 'cls-1', 'student')}
+              className="w-full mt-2 py-2 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs transition flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Video className="w-4 h-4 text-emerald-200" />
+              <span>Entrar na Aula ao Vivo (Chamada de Vídeo)</span>
+            </button>
           </div>
         </div>
 

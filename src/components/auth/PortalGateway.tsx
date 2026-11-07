@@ -452,12 +452,12 @@ export const PortalGateway: React.FC<PortalGatewayProps> = ({ onClose }) => {
                         M-Pesa (Vodacom) & e-Mola (Movitel)
                       </span>
                       <span className="font-mono font-bold text-sm text-white">
-                        (+258) 84 634 8589 / 87 541 1436
+                        (+258) 87 541 1436 / 85 335 7973
                       </span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleCopy('846348589', 'mpesa_home')}
+                      onClick={() => handleCopy('875411436', 'mpesa_home')}
                       className="p-2 rounded-xl bg-emerald-800/80 hover:bg-emerald-700 text-emerald-200 transition cursor-pointer shrink-0"
                       title="Copiar M-Pesa"
                     >
@@ -684,7 +684,7 @@ export const PortalGateway: React.FC<PortalGatewayProps> = ({ onClose }) => {
                 </h4>
                 <ul className="list-disc list-inside space-y-1 text-slate-600">
                   <li>No campo "Descritivo / Referência" da transferência, indique o <strong>Nome do Formando</strong> ou o <strong>Código de Matrícula</strong> (ex: ASDE-2025-XXXX).</li>
-                  <li>Envie o comprovativo de transferência ou talão de depósito para o nosso WhatsApp oficial: <strong>(+258) 84 634 8589</strong> ou por e-mail para <strong>cfpasde.geral@gmail.com</strong>.</li>
+                  <li>Envie o comprovativo de transferência ou talão de depósito para o nosso WhatsApp oficial: <strong>(+258) 87 541 1436</strong> ou por e-mail para <strong>cfpasde.geral@gmail.com</strong>.</li>
                   <li>A secretaria do CFP - ASDE procede à validação e emissão do recibo oficial com NUIT 401953728 no sistema em menos de 2 horas.</li>
                 </ul>
               </div>
@@ -800,7 +800,7 @@ export const PortalGateway: React.FC<PortalGatewayProps> = ({ onClose }) => {
                     className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:underline"
                   >
                     <MessageCircle className="w-3.5 h-3.5" />
-                    <span>WhatsApp (+258 84 634 8589)</span>
+                    <span>WhatsApp (+258 87 541 1436)</span>
                   </a>
                 </div>
               </div>

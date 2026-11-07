@@ -214,7 +214,7 @@ export const BankingDetailsCard: React.FC<BankingDetailsCardProps> = ({
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white text-[11px] font-bold transition"
             >
               <Phone className="w-3 h-3 text-emerald-300" />
-              <span>WhatsApp: 846348589</span>
+              <span>WhatsApp: (+258) 87 541 1436</span>
             </a>
 
             <a

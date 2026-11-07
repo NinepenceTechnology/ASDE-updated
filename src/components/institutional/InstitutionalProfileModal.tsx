@@ -383,7 +383,7 @@ export const InstitutionalProfileModal: React.FC<InstitutionalProfileModalProps>
                         rel="noopener noreferrer"
                         className="text-emerald-700 font-bold hover:underline"
                       >
-                        +258 846348589 (Suporte 9TECH / ASDE)
+                        +258 87 541 1436 (WhatsApp Oficial CFPA)
                       </a>
                     </div>
                   </div>

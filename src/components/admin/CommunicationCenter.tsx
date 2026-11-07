@@ -50,7 +50,7 @@ export const CommunicationCenter: React.FC = () => {
     tuition: {
       label: 'Lembrete de Mensalidade / Propina Pendente',
       text: (name) =>
-        `Olá ${name}! Lembramos que a sua propina do Centro de Formação Profissional ASDE está próxima do vencimento ou pendente. Pode liquidar via Millennium BIM (Conta: 956365875 / NIB: 000100000095636587557) ou M-Pesa (846348589) pelo portal do formando ou presencialmente na nossa secretaria na Beira. Qualquer dúvida, fale conosco pelo (+258) 84 634 8589! 🎓`,
+        `Olá ${name}! Lembramos que a sua propina do Centro de Formação Profissional ASDE está próxima do vencimento ou pendente. Pode liquidar via Millennium BIM (Conta: 956365875 / NIB: 000100000095636587557) ou M-Pesa / WhatsApp pelo (+258) 87 541 1436 pelo portal do formando ou presencialmente na nossa secretaria na Beira. Qualquer dúvida, estamos à disposição! 🎓`,
     },
     grade: {
       label: 'Boletim de Avaliação CEFR Disponível',

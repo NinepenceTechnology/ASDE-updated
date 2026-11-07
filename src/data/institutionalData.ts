@@ -8,7 +8,7 @@ export const INSTITUTIONAL_PROFILE: InstitutionalProfileData = {
   city: 'Cidade da Beira, Província de Sofala, Moçambique',
   address: 'Rua Capitão Pereira do Lago, Bairro de Matacuane, Cidade da Beira',
   contacts: ['(+258) 853357973', '(+258) 875411436'],
-  whatsappContact: '846348589',
+  whatsappContact: '875411436',
   email: 'cfpasde.geral@gmail.com',
   bankDetails: {
     bankName: 'Millennium BIM',

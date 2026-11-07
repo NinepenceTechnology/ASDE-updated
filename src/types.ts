@@ -404,3 +404,44 @@ export interface SchoolNotice {
   priority: 'normal' | 'important';
 }
 
+// Video Call & Conference Types
+export type VideoRoomType = 'class' | 'general' | 'staff' | 'level';
+
+export interface VideoCallRoom {
+  id: string;
+  title: string;
+  type: VideoRoomType;
+  classId?: string;
+  level?: CEFRLevel;
+  hostName: string;
+  hostRole: string;
+  schedule?: string;
+  activeTopic: string;
+  isLive: boolean;
+}
+
+export interface VideoParticipant {
+  id: string;
+  name: string;
+  role: 'teacher' | 'student' | 'staff' | 'director';
+  avatar?: string;
+  level?: CEFRLevel;
+  className?: string;
+  isMuted: boolean;
+  isVideoOn: boolean;
+  isHandRaised: boolean;
+  isSpeaking: boolean;
+  joinedAt: string;
+}
+
+export interface VideoChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderRole: 'teacher' | 'student' | 'staff';
+  text: string;
+  timestamp: string;
+  isVocabulary?: boolean;
+}
+
+

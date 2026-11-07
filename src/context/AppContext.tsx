@@ -47,7 +47,8 @@ export type AdminSection =
   | 'finance'
   | 'administration'
   | 'communication'
-  | 'app_manager';
+  | 'app_manager'
+  | 'video_call';
 
 export type StudentTab =
   | 'learn'
@@ -58,7 +59,8 @@ export type StudentTab =
   | 'flashcards'
   | 'gamification'
   | 'school_hub'
-  | 'ranking';
+  | 'ranking'
+  | 'video_call';
 
 interface AppContextType {
   // Navigation & View Mode
@@ -127,6 +129,11 @@ interface AppContextType {
   mobilePreviewFrame: boolean;
   setMobilePreviewFrame: (val: boolean) => void;
 
+  // Video Call & Virtual Rooms
+  activeVideoRoomId: string;
+  setActiveVideoRoomId: (roomId: string) => void;
+  openVideoRoom: (roomId?: string, forceMode?: 'admin' | 'student') => void;
+
   // Portal Gate & Local Authentication
   portalGateOpen: boolean;
   setPortalGateOpen: (open: boolean) => void;
@@ -154,6 +161,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [studentTab, setStudentTab] = useState<StudentTab>('learn');
   const [activeStudentId, setActiveStudentId] = useState<string>('stu-1');
   const [mobilePreviewFrame, setMobilePreviewFrame] = useState<boolean>(false);
+  const [activeVideoRoomId, setActiveVideoRoomId] = useState<string>('cls-1');
 
   // Portal Gate & Local Auth States
   const [portalGateOpen, setPortalGateOpen] = useState<boolean>(() => {
@@ -794,6 +802,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveStudentId('stu-1');
   };
 
+  const openVideoRoom = (roomId?: string, forceMode?: 'admin' | 'student') => {
+    if (roomId) {
+      setActiveVideoRoomId(roomId);
+    } else {
+      if (viewMode === 'student' && activeStudent?.classId) {
+        setActiveVideoRoomId(activeStudent.classId);
+      } else {
+        setActiveVideoRoomId(classes[0]?.id || 'general');
+      }
+    }
+
+    if (forceMode === 'admin' || (!forceMode && viewMode === 'admin')) {
+      setViewMode('admin');
+      setAdminSection('video_call');
+    } else {
+      setViewMode('student');
+      setStudentTab('video_call');
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -841,6 +869,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resetAllData,
         mobilePreviewFrame,
         setMobilePreviewFrame,
+        activeVideoRoomId,
+        setActiveVideoRoomId,
+        openVideoRoom,
         portalGateOpen,
         setPortalGateOpen,
         cfpAuth,

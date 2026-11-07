@@ -1771,7 +1771,7 @@ export const INITIAL_COMMUNICATION_LOGS: CommunicationLog[] = [
     channel: 'whatsapp',
     type: 'tuition_reminder',
     subject: 'Lembrete de Propina - Centro de Formação Profissional ASDE',
-    message: 'Olá Juliana! A sua propina referente a Junho/2025 está pendente. Pode efetuar a liquidação via Millennium BIM (Conta: 956365875) ou M-Pesa (846348589) acedendo ao portal do formando.',
+    message: 'Olá Juliana! A sua propina referente a Junho/2025 está pendente. Pode efetuar a liquidação via Millennium BIM (Conta: 956365875) ou M-Pesa / WhatsApp (875411436) acedendo ao portal do formando.',
     sentAt: '05/06/2025 às 14:20',
     status: 'delivered',
   },

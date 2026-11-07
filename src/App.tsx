@@ -13,6 +13,7 @@ import { AppCurriculumManager } from './components/admin/AppCurriculumManager';
 import { CoursesManager } from './components/admin/CoursesManager';
 import { AdministrationManager } from './components/admin/AdministrationManager';
 import { CommunicationCenter } from './components/admin/CommunicationCenter';
+import { VideoCallHub } from './components/videocall/VideoCallHub';
 
 // Student App Views
 import { LearningRoadmap } from './components/student/LearningRoadmap';
@@ -52,6 +53,7 @@ import {
   FileSpreadsheet,
   Building2,
   Lock,
+  Video,
 } from 'lucide-react';
 
 const AdminLayout: React.FC = () => {
@@ -146,6 +148,14 @@ const AdminLayout: React.FC = () => {
       badgeColor: 'bg-emerald-100 text-emerald-800',
       allowedRoles: ['admin_ceo', 'cfp_geral', 'docente'],
     },
+    {
+      id: 'video_call' as const,
+      label: 'Videoconferência & Aulas',
+      icon: Video,
+      badge: 'Ao Vivo',
+      badgeColor: 'bg-emerald-600 text-white',
+      allowedRoles: ['admin_ceo', 'cfp_geral', 'docente', 'secretaria'],
+    },
   ];
 
   // Filter items based on CFP Role if role is defined
@@ -225,6 +235,7 @@ const AdminLayout: React.FC = () => {
         {adminSection === 'administration' && <AdministrationManager />}
         {adminSection === 'communication' && <CommunicationCenter />}
         {adminSection === 'app_manager' && <AppCurriculumManager />}
+        {adminSection === 'video_call' && <VideoCallHub />}
       </main>
     </div>
   );
@@ -244,6 +255,7 @@ const StudentLayout: React.FC = () => {
     { id: 'flashcards' as const, label: 'Flashcards', icon: Layers },
     { id: 'ranking' as const, label: 'Ranking & Pódio', icon: Trophy },
     { id: 'school_hub' as const, label: 'Minha Escola & Boletim', icon: GraduationCap },
+    { id: 'video_call' as const, label: 'Aula Ao Vivo & Vídeo', icon: Video },
   ];
 
   const mainContentView = (
@@ -257,6 +269,7 @@ const StudentLayout: React.FC = () => {
       {studentTab === 'flashcards' && <FlashcardsDeck />}
       {studentTab === 'ranking' && <Leaderboard />}
       {studentTab === 'school_hub' && <SchoolHub />}
+      {studentTab === 'video_call' && <VideoCallHub />}
     </div>
   );
 

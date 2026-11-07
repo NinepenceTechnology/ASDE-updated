@@ -24,6 +24,7 @@ export const ClassesManager: React.FC = () => {
     setAdminSection,
     setActiveStudentId,
     setViewMode,
+    openVideoRoom,
   } = useApp();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -203,18 +204,26 @@ export const ClassesManager: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    onClick={() => openVideoRoom(cls.id, 'admin')}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer shadow-xs"
+                    title="Iniciar Videochamada com os formandos e professor desta turma"
+                  >
+                    <Video className="w-3.5 h-3.5" />
+                    Aula ao Vivo
+                  </button>
                   <button
                     onClick={() => {
                       setSelectedClassDetail(cls);
                     }}
-                    className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer"
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer"
                   >
                     Alunos ({classStudents.length})
                   </button>
                   <button
                     onClick={() => setAdminSection('attendance')}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs transition cursor-pointer"
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs transition cursor-pointer"
                   >
                     <ClipboardList className="w-3.5 h-3.5" />
                     Chamada
